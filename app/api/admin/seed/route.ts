@@ -11,14 +11,22 @@ export async function GET(req: Request) {
   if (!SEED_TOKEN || token !== SEED_TOKEN) {
     return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 })
   }
-  try {
-    const tours = (url.searchParams.getAll('tour') as ('ATP'|'WTA')[])
-    const list: ('ATP'|'WTA')[] = tours.length ? tours : ['ATP','WTA']
-    for (const t of list) await seedTournament(t)
-    return Response.json({ ok: true })
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: String(e?.message || e) }), { status: 500 })
+
+  const tours = (url.searchParams.getAll('tour') as ('ATP'|'WTA')[])
+  const list: ('ATP'|'WTA')[] = tours.length ? tours : ['ATP','WTA']
+  const src = url.searchParams.get('src') || undefined
+  const debug = url.searchParams.get('debug') === '1'
+
+  // Optional: debug the PDF text without seeding DB
+  if (debug) {
+    const useUrl = src ?? PDFS[list[0]]
+    const buf = await fetchPdf(useUrl)
+    const text = await pdfToText(buf)
+    return Response.json({ sample: text.split('\n').slice(0, 80) })
   }
+
+  for (const t of list) await seedTournament(t, { src })
+  return Response.json({ ok: true })
 }
 
 type Tour = 'ATP'|'WTA'
@@ -29,25 +37,30 @@ const PDFS: Record<Tour,string> = {
   WTA: 'https://www.usopen.org/en_US/scores/draws/2025_WS_draw.pdf'
 }
 
-async function seedTournament(tour: Tour) {
+async function seedTournament(tour: 'ATP'|'WTA', opts: { src?: string } = {}) {
   const year = 2025
   const slug = tour === 'ATP' ? 'us-open-2025-atp' : 'us-open-2025-wta'
 
-  // Create or fetch the tournament
   const t = await prisma.tournament.upsert({
     where: { slug },
     update: {},
     create: { slug, name: 'US Open', year, tour, drawSize: 128, startAt: new Date(`${year}-08-24T11:00:00-04:00`) }
   })
 
-  // Try to fetch + parse the official PDF, but fall back to generated players
+  // wipe previous players/matches for this tournament so reseeding is clean
+  await prisma.$transaction([
+    prisma.match.deleteMany({ where: { tournamentId: t.id } }),
+    prisma.player.deleteMany({ where: { tournamentId: t.id } })
+  ])
+
   let pairs: Pair[]
   try {
-    const buf = await fetchPdf(PDFS[tour])
+    const pdfUrl = opts.src ?? PDFS[tour]
+    const buf = await fetchPdf(pdfUrl)
     const text = await pdfToText(buf)
     pairs = parseRoundOne(text)
   } catch {
-    pairs = generateDummyPairs(tour) // safe fallback: 128 players
+    pairs = generateDummyPairs(tour) // fallback if PDF fetch/parse fails
   }
 
   // Create players (deduped by name for safety)
