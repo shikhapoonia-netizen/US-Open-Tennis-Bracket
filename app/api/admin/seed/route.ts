@@ -13,26 +13,28 @@ export async function GET(req: Request) {
   }
 
   const tours = (url.searchParams.getAll('tour') as ('ATP'|'WTA')[])
-  const list: ('ATP'|'WTA')[] = tours.length ? tours : ['ATP','WTA']
-  const src = url.searchParams.get('src') || undefined
-  const txt = url.searchParams.get('txt') || undefined
+  const list: ('ATP'|'WTA')[] = tours.length ? tours : ['ATP', 'WTA']
+  const src = url.searchParams.get('src') || undefined    // PDF URL
+  const txt = url.searchParams.get('txt') || undefined    // Plain-text URL
   const debug = url.searchParams.get('debug') === '1'
 
+  // Debug endpoint so you can see what we fetched without changing the DB
   if (debug) {
     try {
       const useUrl = txt ?? src ?? PDFS[list[0]]
-      const res = await fetch(useUrl, {
+      const r = await fetch(useUrl, {
         cache: 'no-store',
         redirect: 'follow',
-        headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': '*/*', 'Referer': 'https://www.usopen.org/' }
+        headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': '*/*', 'Referer': 'https://www.usopen.org/' },
       })
-      const contentType = res.headers.get('content-type') || ''
-      const status = res.status
-      const buf = Buffer.from(await res.arrayBuffer())
+      const status = r.status
+      const ct = r.headers.get('content-type') || ''
+      const buf = Buffer.from(await r.arrayBuffer())
       let sample: string[] = []
       let parseError: string | null = null
-      if (/text\/|plain/.test(contentType) || useUrl.endsWith('.txt')) {
-        sample = String(buf.toString('utf8')).split('\n').slice(0, 60)
+
+      if (/text\//i.test(ct) || useUrl.endsWith('.txt')) {
+        sample = buf.toString('utf8').split('\n').slice(0, 60)
       } else {
         try {
           // @ts-ignore - pdf-parse has no types
@@ -43,63 +45,75 @@ export async function GET(req: Request) {
           parseError = String(e?.message || e)
         }
       }
-      return Response.json({ status, contentType, bytes: buf.length, parseError, sample })
+      return Response.json({ status, contentType: ct, bytes: buf.length, parseError, sample })
     } catch (e: any) {
       return Response.json({ debugError: String(e?.message || e) }, { status: 200 })
     }
   }
 
-  for (const t of list) await seedTournament(t, { src, txt })
-  return Response.json({ ok: true })
+  const results = []
+  for (const t of list) {
+    const res = await seedTournament(t, { src, txt })
+    results.push(res)
+  }
+  return Response.json({ ok: true, results })
 }
 
+type Tour = 'ATP' | 'WTA'
 
-type Tour = 'ATP'|'WTA'
-
-// (Optional) real PDFs – we'll try these first, but we have a safe fallback:
-const PDFS: Record<Tour,string> = {
+const PDFS: Record<Tour, string> = {
   ATP: 'https://www.usopen.org/en_US/scores/draws/2025_MS_draw.pdf',
-  WTA: 'https://www.usopen.org/en_US/scores/draws/2025_WS_draw.pdf'
+  WTA: 'https://www.usopen.org/en_US/scores/draws/2025_WS_draw.pdf',
 }
 
-async function seedTournament(tour: 'ATP'|'WTA', opts: { src?: string, txt?: string } = {}) {
+async function seedTournament(
+  tour: Tour,
+  opts: { src?: string; txt?: string } = {},
+) {
   const year = 2025
   const slug = tour === 'ATP' ? 'us-open-2025-atp' : 'us-open-2025-wta'
 
+  // Create or fetch the tournament
   const t = await prisma.tournament.upsert({
     where: { slug },
     update: {},
-    create: { slug, name: 'US Open', year, tour, drawSize: 128, startAt: new Date(`${year}-08-24T11:00:00-04:00`) }
+    create: { slug, name: 'US Open', year, tour, drawSize: 128, startAt: new Date(`${year}-08-24T11:00:00-04:00`) },
   })
 
-  // clear old data so reseeds are clean
+  // Clear existing data so reseeds are clean
   await prisma.$transaction([
     prisma.match.deleteMany({ where: { tournamentId: t.id } }),
-    prisma.player.deleteMany({ where: { tournamentId: t.id } })
+    prisma.player.deleteMany({ where: { tournamentId: t.id } }),
   ])
 
-  let pairs: Pair[]
-  try {
-    if (opts.txt) {
-      const text = await fetchText(opts.txt)
-      pairs = parsePlainTextList(text)
-    } else {
+  let pairs: Pair[] = []
+  let sourceUsed: 'txt' | 'pdf' | 'fallback' = 'fallback'
+
+  // Prefer TXT if provided, else PDF, else fallback
+  if (opts.txt) {
+    const text = await fetchText(opts.txt)
+    pairs = parsePlainTextList(text)
+    sourceUsed = 'txt'
+  } else if (opts.src || PDFS[tour]) {
+    try {
       const pdfUrl = opts.src ?? PDFS[tour]
       const buf = await fetchPdf(pdfUrl)
       const text = await pdfToText(buf)
       pairs = parseRoundOne(text)
+      sourceUsed = 'pdf'
+    } catch {
+      pairs = generateDummyPairs(tour)
+      sourceUsed = 'fallback'
     }
-  } catch {
-    pairs = generateDummyPairs(tour)
   }
 
-  // Create players (deduped by name for safety)
+  // Create players (deduped by name)
   const playerMap = new Map<string, string>()
   for (const [p1, p2] of pairs) {
     for (const p of [p1, p2]) {
       if (!playerMap.has(p.name)) {
         const created = await prisma.player.create({
-          data: { name: p.name, seed: p.seed ?? undefined, tournamentId: t.id }
+          data: { name: p.name, seed: p.seed ?? undefined, tournamentId: t.id },
         })
         playerMap.set(p.name, created.id)
       }
@@ -107,14 +121,20 @@ async function seedTournament(tour: 'ATP'|'WTA', opts: { src?: string, txt?: str
   }
 
   // Round 1 matches
-  const tx: any[] = []
+  const m1: any[] = []
   for (let i = 0; i < pairs.length; i++) {
     const [a, b] = pairs[i]
-    tx.push(prisma.match.create({
-      data: { tournamentId: t.id, round: 1, index: i, p1Id: playerMap.get(a.name)!, p2Id: playerMap.get(b.name)! }
+    m1.push(prisma.match.create({
+      data: {
+        tournamentId: t.id,
+        round: 1,
+        index: i,
+        p1Id: playerMap.get(a.name)!,
+        p2Id: playerMap.get(b.name)!,
+      },
     }))
   }
-  await prisma.$transaction(tx)
+  await prisma.$transaction(m1)
 
   // Pre-create later rounds
   const drawSize = 128
@@ -127,9 +147,32 @@ async function seedTournament(tour: 'ATP'|'WTA', opts: { src?: string, txt?: str
     }
   }
   await prisma.$transaction(later)
+
+  return {
+    tour,
+    sourceUsed,
+    playersCreated: playerMap.size,
+    round1Matches: pairs.length,
+  }
 }
 
-// ---------- Helpers ----------
+// ---------- helpers ----------
+
+async function fetchPdf(url: string) {
+  const res = await fetch(url, {
+    cache: 'no-store',
+    redirect: 'follow',
+    headers: {
+      'User-Agent': 'Mozilla/5.0',
+      'Accept': 'application/pdf,*/*;q=0.9',
+      'Referer': 'https://www.usopen.org/',
+    },
+  })
+  if (!res.ok) throw new Error(`fetch ${res.status}`)
+  const ct = res.headers.get('content-type') || ''
+  if (!/pdf/i.test(ct)) throw new Error(`bad content-type: ${ct}`)
+  return Buffer.from(await res.arrayBuffer())
+}
 
 async function fetchText(url: string) {
   const res = await fetch(url, { cache: 'no-store', redirect: 'follow' })
@@ -137,56 +180,61 @@ async function fetchText(url: string) {
   return await res.text()
 }
 
-// Accepts 128 lines like `Name [seed]` and pairs them sequentially.
-function parsePlainTextList(text: string): Pair[] {
-  const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-  if (lines.length < 128) throw new Error(`need 128 names, got ${lines.length}`)
-  const entries = lines.slice(0,128).map((l) => {
-    let name = l
-    let seed: number | undefined
-    const m = l.match(/\[(\d+)\]/)
-    if (m) { seed = parseInt(m[1],10); name = l.replace(/\s*\[\d+\]\s*/,'').trim() }
-    return { name, seed }
-  })
-  const pairs: Pair[] = []
-  for (let i=0;i<128;i+=2) pairs.push([ entries[i], entries[i+1] ])
-  return pairs
-}
-
-async function fetchPdf(url: string) {
-  const res = await fetch(url, { cache: 'no-store' })
-  if (!res.ok) throw new Error(`Failed to download PDF: ${res.status}`)
-  const ct = res.headers.get('content-type') || ''
-  if (!/pdf/i.test(ct)) throw new Error(`Not a PDF (content-type: ${ct})`)
-  return Buffer.from(await res.arrayBuffer())
-}
-
 async function pdfToText(buf: Buffer) {
-  // If pdf-parse isn’t available or fails, throw so we use fallback players
-  try {
-    // @ts-ignore - pdf-parse has no types
-    const { default: pdfParse } = await import('pdf-parse')
-    const data = await pdfParse(buf)
-    return String(data.text || '')
-  } catch (e) {
-    throw new Error('pdf-parse failed')
-  }
+  // @ts-ignore - pdf-parse has no types
+  const { default: pdfParse } = await import('pdf-parse')
+  const data = await pdfParse(buf)
+  return String(data.text || '')
 }
 
 type ParsedPlayer = { name: string; seed?: number | null }
 type Pair = [ParsedPlayer, ParsedPlayer]
 
+// TXT format: 128 lines — accepts “1. Name [1]”, “Name (1)”, or just “Name”
+function parsePlainTextList(text: string): Pair[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 128)
+
+  if (lines.length < 128) throw new Error(`need 128 names, got ${lines.length}`)
+
+  const entries = lines.map((l) => {
+    // drop leading numbering like "1. " or "001 "
+    let s = l.replace(/^\s*\d{1,3}[.)]?\s+/, '')
+    // seed like [1] or (1)
+    let seed: number | undefined
+    const m = s.match(/\[(\d+)\]|\((\d+)\)/)
+    if (m) {
+      seed = parseInt(m[1] || m[2]!, 10)
+      s = s.replace(/\s*(\[(\d+)\]|\((\d+)\))\s*/, '').trim()
+    }
+    return { name: s, seed }
+  })
+
+  const pairs: Pair[] = []
+  for (let i = 0; i < 128; i += 2) pairs.push([entries[i], entries[i + 1]])
+  return pairs
+}
+
+// Very basic PDF text parser (kept for completeness)
 function parseRoundOne(text: string): Pair[] {
-  const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-  const numbered = lines.filter(l => /^\d+\.\s+/.test(l))
-  const entries = numbered.map(l => {
-    const m = l.match(/^(\d+)\.\s+(.*)$/)
-    let namePart = (m?.[2] || '').trim()
-    let seed: number | null = null
-    const ms = namePart.match(/\[(\d+)\]/)
-    if (ms) { seed = parseInt(ms[1], 10); namePart = namePart.replace(/\s*\[\d+\]\s*/, '').trim() }
-    namePart = namePart.replace(/\s*\((Q|W|L)\)/g, '').trim()
-    return { name: namePart, seed: seed ?? undefined }
+  const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+  // Example style: "1. Novak Djokovic [1]" … etc.
+  const numbered = lines.filter((l) => /^\d+\.\s+/.test(l))
+  const entries = numbered.map((l) => {
+    const m = l.match(/^\d+\.\s+(.*)$/)
+    let name = (m?.[1] || '').trim()
+    let seed: number | undefined
+    const ms = name.match(/\[(\d+)\]/) || name.match(/\((\d+)\)/)
+    if (ms) {
+      seed = parseInt(ms[1] || ms[2]!, 10)
+      name = name.replace(/\s*(\[(\d+)\]|\((\d+)\))\s*/, '').trim()
+    }
+    // strip qualifiers tags
+    name = name.replace(/\s*\b(Q|WC|LL)\b\s*/g, '').trim()
+    return { name, seed }
   })
   const first128 = entries.slice(0, 128)
   if (first128.length < 128) throw new Error(`Only found ${first128.length} entries in Round 1`)
@@ -195,16 +243,13 @@ function parseRoundOne(text: string): Pair[] {
   return pairs
 }
 
-// Fallback: generate 128 players with seeds 1..32
+// Fallback: placeholder names if parsing fails
 function generateDummyPairs(tour: Tour): Pair[] {
-  const names = Array.from({ length: 128 }, (_, i) =>
-    `${tour} Player ${i + 1}`
-  )
-  const entries: ParsedPlayer[] = names.map((name, i) => ({
-    name,
-    seed: i < 32 ? i + 1 : undefined
+  const entries: ParsedPlayer[] = Array.from({ length: 128 }, (_, i) => ({
+    name: `${tour} Player ${i + 1}`,
+    seed: i < 32 ? i + 1 : undefined,
   }))
   const pairs: Pair[] = []
-  for (let i = 0; i < entries.length; i += 2) pairs.push([entries[i], entries[i + 1]])
+  for (let i = 0; i < 128; i += 2) pairs.push([entries[i], entries[i + 1]])
   return pairs
 }
