@@ -30,3 +30,43 @@ BERGS, Zizou BEL
 TSENG, Chun-Hsin TPE
 GOMEZ, Federico Agustin ARG {Q}
 DRAPER, Jack GBR [5]
+ZVEREV, Alexander GER [3]
+TABILO, Alejandro CHI
+BAUTISTA AGUT, Roberto ESP
+FEARNLEY, Jacob GBR
+MONFILS, Gael FRA
+SAFIULLIN, Roman
+HARRIS, Billy GBR (L)
+AUGER-ALIASSIME, Felix CAN [25]
+HUMBERT, Ugo FRA [22]
+WALTON, Adam AUS
+KOVACEVIC, Aleksandar USA
+WONG, Coleman HKG 
+DUCKWORTH, James AUS (L)
+BOYER, Tristan USA (W)
+PRIZMIC, Dino CRO (Q)
+RUBLEV, Andrey [15]
+KHACHANOV, Karen [9]
+BASAVAREDDY, Nishesh USA (W)
+DELLIEN, Hugo BOL
+MAJCHRZAK, Kamil POL
+RIEDI, Leandro SUI (Q)
+MARTINEZ, Pedro ESP
+ARNALDI, Matteo ITA
+CERUNDOLO, Francisco ARG [56]
+TSITSIPAS, Stefanos GRE [26]
+MULLER, Alexandre FRA
+ALTMAIER, Daniel GER
+MEDJEDOVIC, Hamad SRB
+GASTON, Hugo FRA
+MOCHIZUKI, Shintaro JPN (Q)
+O'CONNELL, Christopher AUS
+DE MINAUR, Alex AUS [8]
+
+
+
+
+
+
+
+
