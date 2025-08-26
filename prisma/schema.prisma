@@ -1,1 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
 
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Tour {
+  ATP
+  WTA
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      Role     @default(USER)
+  entries   Entry[]
+  createdAt DateTime @default(now())
+}
+
+model Tournament {
+  id        String   @id @default(cuid())
+  slug      String   @unique   // e.g. "us-open-2025-atp" | "us-open-2025-wta"
+  name      String
+  year      Int
+  tour      Tour
+  drawSize  Int
+  startAt   DateTime
+  createdAt DateTime @default(now())
+  players   Player[]
+  matches   Match[]
+}
+
+model Player {
+  id           String      @id @default(cuid())
+  name         String
+  seed         Int?
+  tournamentId String
+  tournament   Tournament  @relation(fields: [tournamentId], references: [id])
+}
+
+model Match {
+  id           String     @id @default(cuid())
+  tournamentId String
+  round        Int        // 1..7
+  index        Int        // 0-based within round
+  p1Id         String?
+  p2Id         String?
+  winnerId     String?
+  tournament   Tournament @relation(fields: [tournamentId], references: [id])
+
+  @@unique([tournamentId, round, index])
+}
+
+model Entry {
+  id           String   @id @default(cuid())
+  userId       String
+  tournamentId String
+  label        String
+  locked       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  picks        Pick[]
+
+  user         User       @relation(fields: [userId], references: [id])
+  tournament   Tournament @relation(fields: [tournamentId], references: [id])
+
+  @@unique([userId, tournamentId])
+}
+
+model Pick {
+  entryId  String
+  matchId  String
+  winnerId String
+
+  entry    Entry @relation(fields: [entryId], references: [id])
+  match    Match @relation(fields: [matchId], references: [id])
+
+  @@id([entryId, matchId])
+}
