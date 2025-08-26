@@ -1,5 +1,8 @@
 import { prisma } from '@/lib/db'
 
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
 const SEED_TOKEN = process.env.SEED_TOKEN as string | undefined
 
 export async function GET(req: Request) {
@@ -19,7 +22,6 @@ export async function GET(req: Request) {
 }
 
 type Tour = 'ATP'|'WTA'
-
 const PDFS: Record<Tour,string> = {
   ATP: 'https://www.usopen.org/en_US/scores/draws/2025_MS_draw.pdf',
   WTA: 'https://www.usopen.org/en_US/scores/draws/2025_WS_draw.pdf'
@@ -71,8 +73,16 @@ async function seedTournament(tour: Tour) {
 }
 
 // helpers
-async function fetchPdf(url: string) { const res = await fetch(url); if (!res.ok) throw new Error(`Failed to download PDF: ${url}`); return Buffer.from(await res.arrayBuffer()) }
-async function pdfToText(buf: Buffer) { const { default: pdfParse } = await import('pdf-parse'); const data = await pdfParse(buf); return data.text || '' }
+async function fetchPdf(url: string) {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Failed to download PDF: ${url}`)
+  return Buffer.from(await res.arrayBuffer())
+}
+async function pdfToText(buf: Buffer) {
+  const { default: pdfParse } = await import('pdf-parse')
+  const data = await pdfParse(buf)
+  return data.text || ''
+}
 type ParsedPlayer = { name: string; seed?: number | null }
 type Pair = [ParsedPlayer, ParsedPlayer]
 function parseRoundOne(text: string): Pair[] {
