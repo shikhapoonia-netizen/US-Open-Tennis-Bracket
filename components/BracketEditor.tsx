@@ -43,11 +43,32 @@ export default function BracketEditor({ tour }: { tour: 'ATP'|'WTA' }) {
     setSelected(prev => ({ ...prev, [m.id]: winnerId }))
   }
 
-  async function save() {
-    const picks = Object.entries(selected).filter(([_,v])=>!!v).map(([matchId, winnerId]) => ({ matchId, winnerId: winnerId! }))
-    await fetch('/api/picks', { method: 'PUT', body: JSON.stringify({ tour, picks }) })
-    alert('Saved')
+async function save() {
+  // 1) ensure an Entry exists for this tour
+  const make = await fetch('/api/entries', {
+    method: 'POST',
+    body: JSON.stringify({ tour, label: `${tour} Picks` })
+  });
+  if (make.status === 401) {
+    // not signed in → send to sign in
+    window.location.href = '/signin';
+    return;
   }
+
+  // 2) save picks
+  const picks = Object.entries(selected)
+    .filter(([_, v]) => !!v)
+    .map(([matchId, winnerId]) => ({ matchId, winnerId: winnerId! as string }));
+
+  const res = await fetch('/api/picks', {
+    method: 'PUT',
+    body: JSON.stringify({ tour, picks })
+  });
+
+  if (res.ok) alert('Saved');
+  else alert('Save failed');
+}
+
 
   if (isLoading) return <div>Loading…</div>
   if (!data?.tournament) return <div>No tournament</div>
