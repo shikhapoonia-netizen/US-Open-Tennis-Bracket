@@ -37,6 +37,7 @@ model Tournament {
   createdAt DateTime @default(now())
   players   Player[]
   matches   Match[]
+  entries   Entry[]      // <-- added (opposite side of Entry.tournament)
 }
 
 model Player {
@@ -56,6 +57,7 @@ model Match {
   p2Id         String?
   winnerId     String?
   tournament   Tournament @relation(fields: [tournamentId], references: [id])
+  picks        Pick[]     // <-- added (opposite side of Pick.match)
 
   @@unique([tournamentId, round, index])
 }
