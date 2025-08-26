@@ -7,8 +7,7 @@
     "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "postinstall": "prisma generate",
-    "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:push": "prisma db push"
   },
   "dependencies": {
     "@prisma/client": "^5.16.1",
@@ -18,7 +17,8 @@
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "zod": "^3.23.8",
-    "zustand": "^4.5.5"
+    "zustand": "^4.5.5",
+    "swr": "^2.2.5"
   },
   "devDependencies": {
     "@types/node": "20.11.30",

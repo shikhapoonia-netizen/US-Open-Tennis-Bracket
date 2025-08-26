@@ -26,13 +26,11 @@
       "next",
       "next/types/global",
       "next-auth"
-    ]
+    ],
+    "baseUrl": ".",                 // <-- add this
+    "paths": { "@/*": ["./*"] }     // <-- and this
   },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx"
-  ],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "**/*.d.ts"],
   "exclude": [
     "node_modules"
   ]
