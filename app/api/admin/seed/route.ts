@@ -253,3 +253,5 @@ function generateDummyPairs(tour: Tour): Pair[] {
   for (let i = 0; i < 128; i += 2) pairs.push([entries[i], entries[i + 1]])
   return pairs
 }
+
+
