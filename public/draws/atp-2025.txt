@@ -94,33 +94,38 @@ BAEZ, Sebastian ARG
 HARRIS, Lloyd RSA (Q)
 NAVA, Emilio USA (W)
 FRITZ, Taylor USA [4]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+SHELTON, Ben USA [6]
+BUSE, Ignacio PER (Q)
+CARRENO BUSTA, Pablo ESP
+LLAMAS RUIZ, Pablo ESP (Q)
+THOMPSON, Jordan AUS
+MOUTET, Corentin FRA
+MANNARINO, Adrian FRA
+GRIEKSPOOR, Tallon NED [29]
+LEHECKA, Jiri CZE [20]
+CORIC, Borna CRO
+UGO CARABELLI, Camilo ARG
+ETCHEVERRY, Tomas Martin ARG
+GALAN, Daniel Elahi COL (L)
+COLLIGNON, Raphael BEL
+OFNER, Sebastian AUT
+RUUD, Casper NOR [12]
+MEDVEDEV, Daniil [13]
+BONZI, Benjamin FRA
+NAVONE, Mariano ARG
+GIRON, Marcos USA
+CARBALLES BAENA, Roberto ESP
+RINDERKNECH, Arthur FRA
+SHEVCHENKO, Alexander KAZ
+DAVIDOVICH FOKINA, Alejandro ESP [18]
+DARDERI, Luciano ITA [32]
+HIJIKATA, Rinky AUS
+DOSTANIC, Stefan USA (W)
+SPIZZIRRI, Eliot USA (W)
+BELLUCCI, Mattia ITA
+SHANG, Juncheng CHN
+OPELKA, Reilly USA
+ALCARAZ, Carlos ESP [2]
 
 
 
